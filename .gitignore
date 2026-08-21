@@ -1,0 +1,47 @@
+# deps / build output
+node_modules/
+dist/
+.vite/
+
+# ---------------------------------------------------------------- credentials
+# The service-account key lives OUTSIDE the repo (~/.vpt/service_account.json,
+# or wherever VPT_SERVICE_ACCOUNT points). These patterns are the second line
+# of defence, for when someone drops a copy in the project folder anyway.
+#
+# Deliberately NOT a blanket "*.json": package.json and projects/*.json are
+# real source files. These patterns cover key material only.
+service_account*.json
+service-account*.json
+*service_account*.json
+*serviceaccount*.json
+*credentials*.json
+*client_secret*.json
+*.key.json
+*.pem
+gcp-*.json
+.vpt/
+.env
+.env.*
+
+# ------------------------------------------------------------ project configs
+# A project config holds a real Google spreadsheet id and someone's schedule,
+# so configs are private by default. Only the placeholder example is tracked.
+projects/*.json
+!projects/example-project.json
+
+# local caches (VPT writes these to ~/.vpt, but never track a stray copy)
+vpt_cache_*.json
+
+# atomic-write leftovers
+*.tmp
+*.tmp-*
+
+
+# editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+*.log
+npm-debug.log*

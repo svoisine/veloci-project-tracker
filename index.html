@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Veloci Project Tracker</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <script>
+      // Paint the right background BEFORE first paint, so a reload never
+      // flashes the wrong theme. React owns the theme after mount; this only
+      // needs to get the very first frame right, so it trusts the last
+      // effective theme and falls back to the schedule (08:00 / 19:30).
+      (function () {
+        var t = null;
+        try {
+          t = localStorage.getItem('vpt.theme.last');
+        } catch (e) {}
+        if (t !== 'light' && t !== 'dark') {
+          var d = new Date();
+          var m = d.getHours() * 60 + d.getMinutes();
+          t = m >= 480 && m < 1170 ? 'light' : 'dark';
+        }
+        document.documentElement.dataset.theme = t;
+      })();
+    </script>
+    <style>
+      /* Base reset + the few things style objects cannot express (keyframes,
+         scrollbars, selection). All component styling lives in JS style objects. */
+      * { box-sizing: border-box; }
+      html, body, #root { height: 100%; }
+
+      /* Everything on screen is user text: sheet titles, notes, project names.
+         Any of it can contain a very long unbroken token — a pasted URL, a
+         hash, a language that doesn't use spaces. `anywhere` (not `break-word`)
+         because only `anywhere` also shrinks an element's min-content width,
+         which is what stops a flex/grid child from refusing to shrink and
+         blowing the whole page out horizontally. Inherited, so one rule covers
+         every component. */
+      #root { overflow-wrap: anywhere; }
+
+      html { color-scheme: dark; }
+      html[data-theme='light'] { color-scheme: light; }
+
+      body {
+        margin: 0;
+        background: #16100C;
+        color: #F8F0E7;
+        font-family: 'Space Grotesk', system-ui, sans-serif;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+      }
+      html[data-theme='light'] body {
+        background: #FBF4E9;
+        color: #2B1D12;
+      }
+
+      ::selection { background: rgba(242, 112, 92, 0.32); }
+
+      ::-webkit-scrollbar { width: 10px; height: 10px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb {
+        background: rgba(255, 226, 199, 0.16);
+        border-radius: 6px;
+      }
+      ::-webkit-scrollbar-thumb:hover { background: rgba(255, 226, 199, 0.26); }
+      html[data-theme='light'] ::-webkit-scrollbar-thumb {
+        background: rgba(94, 62, 38, 0.22);
+      }
+      html[data-theme='light'] ::-webkit-scrollbar-thumb:hover {
+        background: rgba(94, 62, 38, 0.34);
+      }
+
+      @keyframes vptPulse {
+        0%, 100% { opacity: 0.30; }
+        50%      { opacity: 0.65; }
+      }
+      @keyframes vptSpin {
+        to { transform: rotate(360deg); }
+      }
+      @keyframes vptRise {
+        from { opacity: 0; transform: translateY(6px); }
+        to   { opacity: 1; transform: translateY(0); }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

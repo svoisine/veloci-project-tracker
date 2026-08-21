@@ -1,0 +1,27 @@
+{
+  "name": "vpt",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Veloci Project Tracker — local project dashboard over Google Sheets",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently \"npm:dev:server\" \"npm:dev:web\"",
+    "dev:server": "node --watch-path=./server server/index.js",
+    "dev:web": "vite",
+    "build": "vite build",
+    "start": "npm run build && npm run serve",
+    "serve": "node server/index.js --serve",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "express": "^5.2.1",
+    "googleapis": "^174.0.1",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^6.0.5",
+    "concurrently": "^10.0.4",
+    "vite": "^8.2.1"
+  }
+}

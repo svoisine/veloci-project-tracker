@@ -1,0 +1,9 @@
+{
+  "id": "example-project",
+  "name": "Example Project",
+  "spreadsheetId": "PASTE_YOUR_GOOGLE_SHEET_ID_HERE",
+  "trackerRange": "Tracker!A1:K1000",
+  "knRange": "KN!A1:G1000",
+  "weekStarts": {},
+  "milestones": []
+}

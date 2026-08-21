@@ -1,0 +1,4 @@
+id,phase,week,lane,title,prereq,blocked_by,status,guide_ref,done_when,notes
+EX-1.01,1,W1,deep,Example: set up your first real task,none,none,todo,,Replace this with your own done-condition,This is an example row — delete it and add your own.
+EX-1.02,1,W1,gap,Example: a task that depends on the first,EX-1.01,none,todo,,,Note the prereq column points at EX-1.01.
+EX-1.03,1,W2,test,Example: a blocked task,none,KN001,blocked,,,Shows how blocked_by references a KN id.

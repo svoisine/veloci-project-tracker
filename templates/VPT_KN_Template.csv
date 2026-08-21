@@ -1,0 +1,2 @@
+id,severity,status,title,blocks,opened,notes
+KN001,low,open,Example known issue — delete me,EX-1.03,2026-01-01,This is an example KN. Severity can be low/medium/high/critical.
