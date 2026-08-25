@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>VPT — Architecture</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#1a1512; --bg2:#221b16; --bg3:#2b221b; --panel:#241d17;
+    --line:rgba(255,255,255,.09); --line2:rgba(255,236,210,.14);
+    --text:#F7EEE3; --text2:rgba(247,238,227,.62); --text3:rgba(247,238,227,.4);
+    --amber:#F5A623; --coral:#F2683C; --gold:#F5C542; --sage:#9BB86A; --sky:#5BB8D4; --rust:#C6533A;
+    --amberSoft:rgba(245,166,35,.12); --coralSoft:rgba(242,104,60,.12);
+    --sageSoft:rgba(155,184,106,.14); --skySoft:rgba(91,184,212,.12);
+    --grad:linear-gradient(92deg,var(--gold),var(--coral));
+    --disp:'Barlow Condensed',system-ui,sans-serif; --body:'Space Grotesk',system-ui,sans-serif; --mono:'JetBrains Mono',monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:radial-gradient(1100px 560px at 12% -5%, rgba(245,166,35,.07), transparent 60%),var(--bg);
+    color:var(--text);font-family:var(--body);line-height:1.6;-webkit-font-smoothing:antialiased;padding:0 0 80px}
+  .wrap{max-width:960px;margin:0 auto;padding:0 22px}
+  header.top{padding:42px 0 22px;border-bottom:1px solid var(--line);margin-bottom:28px}
+  .kicker{font-family:var(--mono);font-size:12px;letter-spacing:2px;text-transform:uppercase;color:var(--amber);margin-bottom:10px}
+  h1{font-family:var(--disp);font-weight:800;font-size:42px;line-height:1;margin:0 0 10px;text-transform:uppercase;letter-spacing:.5px}
+  h1 .g{background:var(--grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+  .lead{color:var(--text2);font-size:15.5px;max-width:74ch}
+  h2{font-family:var(--disp);font-weight:700;font-size:15px;letter-spacing:1.5px;text-transform:uppercase;color:var(--amber);
+    margin:40px 0 4px;padding-bottom:8px;border-bottom:1px solid var(--line2);display:flex;gap:10px;align-items:center}
+  h2 .n{font-family:var(--mono);font-size:12px;color:var(--text3);font-weight:400}
+  h3{font-family:var(--disp);font-weight:700;font-size:20px;margin:22px 0 6px}
+  p{margin:10px 0}
+  code{font-family:var(--mono);font-size:.86em;background:var(--bg3);padding:1.5px 6px;border-radius:5px;color:var(--gold)}
+  strong{color:#fff}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px 22px;margin:16px 0}
+  .note{border-left:3px solid var(--amber);background:var(--amberSoft);border-radius:0 10px 10px 0;padding:12px 16px;margin:14px 0;font-size:14px}
+  .note.sky{border-color:var(--sky);background:var(--skySoft)}
+  .note b{color:var(--gold)} .note.sky b{color:var(--sky)}
+  svg{max-width:100%;height:auto;display:block;margin:6px auto}
+  .cap{text-align:center;font-size:12px;color:var(--text3);margin:2px 0 8px;font-family:var(--mono)}
+  table{width:100%;border-collapse:collapse;margin:14px 0;font-size:13.5px}
+  th,td{text-align:left;padding:8px 11px;border-bottom:1px solid var(--line2);vertical-align:top}
+  th{font-family:var(--disp);font-size:12.5px;letter-spacing:.8px;text-transform:uppercase;color:var(--amber);font-weight:700}
+  td.mono,th.mono{font-family:var(--mono);font-size:12px}
+  ul{margin:8px 0;padding-left:22px} li{margin:5px 0}
+  .tag{display:inline-block;font-family:var(--mono);font-size:11px;padding:2px 8px;border-radius:6px;background:var(--bg3);color:var(--text2);margin:2px 4px 2px 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="kicker">Architecture</div>
+    <h1>Veloci Project Tracker · <span class="g">Architecture</span></h1>
+    <p class="lead">VPT is a local, single-user, full-stack app that turns a Google Sheet into a live project dashboard. This document describes how it's built: the topology, the request flow, the module layout, and the security and failure models.</p>
+  </header>
+
+  <h2 id="what"><span class="n">01</span> Overview</h2>
+  <p>The Google Sheet is the <strong>source of truth</strong>. VPT is a read/write window onto it that computes a prioritized view — progress, what's ready to work on, what's blocked — and lets you edit task status and notes. It runs entirely on your own machine: a Node/Express backend plus a React UI. No hosting, no login, no accounts, no database, and no third party receives your data.</p>
+  <div class="note"><b>Why there's a backend at all:</b> a browser tab cannot safely hold a Google service-account key (it would be exposed in page source and network traffic). A small local server holds the key on disk and talks to Google; the browser only ever calls <code>/api/…</code> on that local server. That single constraint is why VPT is full-stack rather than a static page.</div>
+
+  <h2 id="stack"><span class="n">02</span> Stack</h2>
+  <table>
+    <tr><th>Layer</th><th>Choice</th><th>Notes</th></tr>
+    <tr><td class="mono">Runtime</td><td class="mono">Node.js (ESM)</td><td>One language across both tiers.</td></tr>
+    <tr><td class="mono">Backend</td><td class="mono">Express</td><td>Thin routing + handlers over the Sheets client.</td></tr>
+    <tr><td class="mono">Google I/O</td><td class="mono">googleapis (Sheets v4)</td><td>Service-account auth; <code>batchGet</code> read, single-cell <code>update</code> write.</td></tr>
+    <tr><td class="mono">Frontend</td><td class="mono">React</td><td>Function components + hooks. No state library, no router.</td></tr>
+    <tr><td class="mono">Build/dev</td><td class="mono">Vite</td><td>Dev server with HMR; static <code>dist/</code> for serve mode.</td></tr>
+    <tr><td class="mono">Persistence</td><td class="mono">JSON files</td><td>One config per project; a disposable cache and notes snapshot per project. No DB.</td></tr>
+  </table>
+  <p><strong>Four runtime dependencies:</strong> <code>express</code>, <code>googleapis</code>, <code>react</code>, <code>react-dom</code>. A deliberately small surface — less to audit, less to break.</p>
+
+  <h2 id="topology"><span class="n">03</span> Topology</h2>
+  <p class="cap">three trust zones · one direction of truth</p>
+  <svg viewBox="0 0 940 430" xmlns="http://www.w3.org/2000/svg" font-family="'Space Grotesk',sans-serif">
+    <defs>
+      <marker id="ar" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 Z" fill="#F5A623"/></marker>
+      <marker id="arc" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 Z" fill="#5BB8D4"/></marker>
+    </defs>
+    <rect x="12" y="52" width="300" height="330" rx="14" fill="rgba(91,184,212,.06)" stroke="rgba(91,184,212,.3)" stroke-dasharray="5 4"/>
+    <text x="28" y="76" fill="#5BB8D4" font-size="12" font-family="'JetBrains Mono'">YOUR MACHINE · browser</text>
+    <rect x="336" y="52" width="300" height="330" rx="14" fill="rgba(245,166,35,.06)" stroke="rgba(245,166,35,.32)" stroke-dasharray="5 4"/>
+    <text x="352" y="76" fill="#F5A623" font-size="12" font-family="'JetBrains Mono'">YOUR MACHINE · local server</text>
+    <rect x="660" y="52" width="268" height="330" rx="14" fill="rgba(155,184,106,.06)" stroke="rgba(155,184,106,.3)" stroke-dasharray="5 4"/>
+    <text x="676" y="76" fill="#9BB86A" font-size="12" font-family="'JetBrains Mono'">GOOGLE (only external system)</text>
+
+    <rect x="40" y="102" width="244" height="84" rx="10" fill="#241d17" stroke="rgba(255,255,255,.12)"/>
+    <text x="162" y="130" text-anchor="middle" fill="#F7EEE3" font-size="15" font-weight="700">React UI</text>
+    <text x="162" y="151" text-anchor="middle" fill="rgba(247,238,227,.6)" font-size="12">Hub · Project view · editors</text>
+    <text x="162" y="170" text-anchor="middle" fill="rgba(247,238,227,.4)" font-size="11" font-family="'JetBrains Mono'">calls /api/… (relative)</text>
+
+    <rect x="40" y="240" width="244" height="64" rx="10" fill="#241d17" stroke="rgba(255,255,255,.1)"/>
+    <text x="162" y="266" text-anchor="middle" fill="#F7EEE3" font-size="13" font-weight="600">Vite (dev) / dist (serve)</text>
+    <text x="162" y="286" text-anchor="middle" fill="rgba(247,238,227,.4)" font-size="11" font-family="'JetBrains Mono'">serves the UI bundle</text>
+
+    <rect x="364" y="102" width="244" height="50" rx="9" fill="#2b221b" stroke="rgba(245,166,35,.4)"/>
+    <text x="486" y="124" text-anchor="middle" fill="#F5C542" font-size="13" font-weight="700">app.js · routes/</text>
+    <text x="486" y="142" text-anchor="middle" fill="rgba(247,238,227,.5)" font-size="10.5" font-family="'JetBrains Mono'">always 200 · JSON envelope</text>
+
+    <rect x="364" y="164" width="116" height="48" rx="9" fill="#241d17" stroke="rgba(255,255,255,.1)"/>
+    <text x="422" y="184" text-anchor="middle" fill="#F7EEE3" font-size="12" font-weight="600">brief/</text>
+    <text x="422" y="200" text-anchor="middle" fill="rgba(247,238,227,.45)" font-size="9.5" font-family="'JetBrains Mono'">pure compute</text>
+
+    <rect x="492" y="164" width="116" height="48" rx="9" fill="#241d17" stroke="rgba(255,255,255,.1)"/>
+    <text x="550" y="184" text-anchor="middle" fill="#F7EEE3" font-size="12" font-weight="600">config/</text>
+    <text x="550" y="200" text-anchor="middle" fill="rgba(247,238,227,.45)" font-size="9.5" font-family="'JetBrains Mono'">project files</text>
+
+    <rect x="364" y="224" width="244" height="50" rx="9" fill="#2b221b" stroke="rgba(155,184,106,.4)"/>
+    <text x="486" y="246" text-anchor="middle" fill="#9BB86A" font-size="13" font-weight="700">sheets/ + google/</text>
+    <text x="486" y="264" text-anchor="middle" fill="rgba(247,238,227,.5)" font-size="10.5" font-family="'JetBrains Mono'">only path to Google</text>
+
+    <rect x="364" y="286" width="244" height="44" rx="9" fill="#241d17" stroke="rgba(255,255,255,.1)"/>
+    <text x="486" y="306" text-anchor="middle" fill="#F7EEE3" font-size="12" font-weight="600">paths.js · mode.js</text>
+    <text x="486" y="322" text-anchor="middle" fill="rgba(247,238,227,.45)" font-size="10" font-family="'JetBrains Mono'">paths &amp; run-mode, once</text>
+
+    <rect x="364" y="342" width="244" height="34" rx="9" fill="rgba(242,104,60,.1)" stroke="rgba(242,104,60,.35)"/>
+    <text x="486" y="364" text-anchor="middle" fill="#F2683C" font-size="10.5" font-weight="600" font-family="'JetBrains Mono'">~/.vpt/ key + caches · projects/*.json</text>
+
+    <rect x="688" y="140" width="212" height="80" rx="10" fill="#241d17" stroke="rgba(155,184,106,.4)"/>
+    <text x="794" y="172" text-anchor="middle" fill="#9BB86A" font-size="14" font-weight="700">Google Sheets API</text>
+    <text x="794" y="194" text-anchor="middle" fill="rgba(247,238,227,.55)" font-size="11">your private sheet</text>
+    <text x="794" y="211" text-anchor="middle" fill="rgba(247,238,227,.4)" font-size="10.5" font-family="'JetBrains Mono'">= source of truth</text>
+
+    <line x1="284" y1="140" x2="360" y2="128" stroke="#F5A623" stroke-width="2" marker-end="url(#ar)"/>
+    <text x="322" y="120" text-anchor="middle" fill="#F5A623" font-size="10" font-family="'JetBrains Mono'">/api</text>
+    <line x1="608" y1="250" x2="684" y2="192" stroke="#9BB86A" stroke-width="2" marker-end="url(#arc)"/>
+    <text x="652" y="214" text-anchor="middle" fill="#9BB86A" font-size="10" font-family="'JetBrains Mono'">auth+I/O</text>
+    <line x1="284" y1="272" x2="360" y2="272" stroke="rgba(255,255,255,.25)" stroke-width="1.5" stroke-dasharray="4 3"/>
+  </svg>
+
+  <h2 id="modules"><span class="n">04</span> Module layout</h2>
+  <p>The codebase is organized so each file owns one job. The server entry point is a listener and nothing else; routing, handlers, HTTP envelopes, sheet I/O, compute, and config storage are separate concerns.</p>
+  <table>
+    <tr><th>Area</th><th>Responsibility</th><th>Reaches Google?</th></tr>
+    <tr><td class="mono">index.js</td><td>The process: listen, survive stray errors, exit cleanly.</td><td>No</td></tr>
+    <tr><td class="mono">app.js · routes/</td><td>The routing table and handlers (<code>brief</code>, <code>steps</code>, <code>notes</code>, <code>projects</code>, <code>setup</code>, <code>health</code>).</td><td>via sheets/ only</td></tr>
+    <tr><td class="mono">http/</td><td>JSON envelopes, the 404 + error handler, and static/SPA serving in serve mode.</td><td>No</td></tr>
+    <tr><td class="mono">brief/</td><td>Pure computation: rows + config → dashboard payload. No I/O.</td><td>No</td></tr>
+    <tr><td class="mono">notes/</td><td>The notes feed: a pure diff of loaded rows against the local snapshot, plus the snapshot file itself. Holds no Sheets client.</td><td><b style="color:#F2683C">No — by construction</b></td></tr>
+    <tr><td class="mono">config/</td><td>Project registry: create / read / patch / delete <code>projects/*.json</code>. Holds no Sheets client.</td><td><b style="color:#F2683C">No — by construction</b></td></tr>
+    <tr><td class="mono">sheets/ · google/</td><td>The only modules that authenticate and do Sheet I/O; manage the on-disk cache; classify Google failures.</td><td><b style="color:#9BB86A">Yes — only here</b></td></tr>
+    <tr><td class="mono">paths.js · mode.js</td><td>Resolve every filesystem path and the run-mode once, so nothing can disagree.</td><td>No</td></tr>
+  </table>
+  <div class="note"><b>Structural guarantee:</b> because <code>config/</code> imports nothing from <code>sheets/</code>, "deleting a project can never touch your Google data" isn't a promise to trust — it's impossible in the code. A shared <code>contract.js</code> holds the validation rules (id pattern, field caps, default ranges) used by <em>both</em> tiers, so the browser and server can't drift; the server remains the authority and re-validates everything.</div>
+
+  <h2 id="lifecycle"><span class="n">05</span> Request flow · a dashboard read</h2>
+  <p class="cap">opening the page → seeing your tasks</p>
+  <svg viewBox="0 0 920 250" xmlns="http://www.w3.org/2000/svg" font-family="'Space Grotesk',sans-serif">
+    <defs><marker id="a2" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#F5C542"/></marker></defs>
+    <g font-size="12">
+      <rect x="10" y="30" width="150" height="66" rx="9" fill="#241d17" stroke="rgba(91,184,212,.4)"/>
+      <text x="85" y="55" text-anchor="middle" fill="#5BB8D4" font-weight="700">1 · Browser</text>
+      <text x="85" y="75" text-anchor="middle" fill="rgba(247,238,227,.6)" font-size="11">GET /api/brief</text>
+
+      <rect x="185" y="30" width="150" height="66" rx="9" fill="#241d17" stroke="rgba(245,166,35,.4)"/>
+      <text x="260" y="55" text-anchor="middle" fill="#F5A623" font-weight="700">2 · config/</text>
+      <text x="260" y="75" text-anchor="middle" fill="rgba(247,238,227,.6)" font-size="11">load + validate id</text>
+
+      <rect x="360" y="30" width="150" height="66" rx="9" fill="#241d17" stroke="rgba(155,184,106,.4)"/>
+      <text x="435" y="55" text-anchor="middle" fill="#9BB86A" font-weight="700">3 · sheets/</text>
+      <text x="435" y="75" text-anchor="middle" fill="rgba(247,238,227,.6)" font-size="11">batchGet · 6s timeout</text>
+
+      <rect x="535" y="30" width="150" height="66" rx="9" fill="#241d17" stroke="rgba(242,104,60,.4)"/>
+      <text x="610" y="55" text-anchor="middle" fill="#F2683C" font-weight="700">4 · cache</text>
+      <text x="610" y="75" text-anchor="middle" fill="rgba(247,238,227,.6)" font-size="11">write last-good</text>
+
+      <rect x="710" y="30" width="150" height="66" rx="9" fill="#241d17" stroke="rgba(245,197,66,.5)"/>
+      <text x="785" y="55" text-anchor="middle" fill="#F5C542" font-weight="700">5 · brief/</text>
+      <text x="785" y="75" text-anchor="middle" fill="rgba(247,238,227,.6)" font-size="11">compute payload</text>
+
+      <line x1="160" y1="63" x2="183" y2="63" stroke="#F5C542" stroke-width="1.8" marker-end="url(#a2)"/>
+      <line x1="335" y1="63" x2="358" y2="63" stroke="#F5C542" stroke-width="1.8" marker-end="url(#a2)"/>
+      <line x1="510" y1="63" x2="533" y2="63" stroke="#F5C542" stroke-width="1.8" marker-end="url(#a2)"/>
+      <line x1="685" y1="63" x2="708" y2="63" stroke="#F5C542" stroke-width="1.8" marker-end="url(#a2)"/>
+
+      <rect x="300" y="150" width="320" height="52" rx="9" fill="#2b221b" stroke="rgba(245,166,35,.4)"/>
+      <text x="460" y="172" text-anchor="middle" fill="#F5C542" font-weight="700" font-size="13">6 · 200 JSON envelope → browser</text>
+      <text x="460" y="191" text-anchor="middle" fill="rgba(247,238,227,.55)" font-size="10.5" font-family="'JetBrains Mono'">{ source, progress, readyDeep, readyGap, blocked, … }</text>
+      <line x1="785" y1="96" x2="620" y2="152" stroke="#F5C542" stroke-width="1.8" marker-end="url(#a2)"/>
+
+      <rect x="10" y="150" width="230" height="52" rx="9" fill="#241d17" stroke="rgba(91,184,212,.4)"/>
+      <text x="125" y="172" text-anchor="middle" fill="#5BB8D4" font-weight="700" font-size="13">7 · React renders</text>
+      <text x="125" y="191" text-anchor="middle" fill="rgba(247,238,227,.5)" font-size="10.5">ring · lanes · blocked · KNs</text>
+      <line x1="300" y1="176" x2="242" y2="176" stroke="#F5C542" stroke-width="1.8" marker-end="url(#a2)"/>
+    </g>
+    <text x="460" y="230" text-anchor="middle" fill="rgba(247,238,227,.4)" font-size="11">If step 3 fails → serve step 4's cache as <tspan fill="#F2683C" font-family="'JetBrains Mono'">cached</tspan>; if no cache → <tspan fill="#C6533A" font-family="'JetBrains Mono'">none</tspan> + hint. Never an error status.</text>
+  </svg>
+
+  <h2 id="write"><span class="n">06</span> The write path</h2>
+  <ul>
+    <li><strong>Single-cell writes only.</strong> One <code>POST /api/step</code> changes one cell (<code>status</code>, <code>notes</code>, or <code>blocked_by</code>) — never a row or range.</li>
+    <li><strong>Closed field whitelist</strong>, column located by header name, so reordering sheet columns can't misdirect a write.</li>
+    <li><strong>Stale guard.</strong> Before writing, VPT re-reads the target cell; if it changed since the page loaded, the write is refused and the UI refreshes to the sheet's truth rather than overwriting.</li>
+    <li><strong>Writes require live data</strong> — VPT won't locate a row from a stale cache, so it refuses to write while offline. A rejected notes save preserves the user's typed text.</li>
+  </ul>
+  <div class="note sky"><b>Known limit:</b> the stale guard is a narrow re-read window, not a transaction — two writers saving the same cell in the same instant can still interleave. The realistic case (an edit made minutes ago elsewhere) is covered. Full optimistic concurrency is out of scope for a single-user tool.</div>
+
+  <h3>Notes activity feed</h3>
+  <p>Notes on a shared sheet are useless if written once and never seen. VPT surfaces them in a filterable panel grouped by the status of the step each note sits on, flagging notes that are new or changed <strong>since this machine last marked them seen</strong>. The Sheet exposes no change history to read, so "new since last time" is not discovered but <strong>remembered</strong>: a local two-slot snapshot (<code>~/.vpt/vpt_notes_snapshot_&lt;id&gt;.json</code>) keeps <code>previous</code>, the last state acknowledged, and <code>current</code>, the last state shown, and the feed diffs the sheet against <code>previous</code>.</p>
+  <p>Only the explicit <strong>Mark all seen</strong> action moves that baseline — reopening the project or restarting the server does not, so unread notes survive the app being closed overnight. The feature is <strong>read-only by construction</strong>: no column is added, no schema changes, no authorship is recorded (VPT has no user identity to attribute a note to), and the only thing written is that local file — the per-step editor remains the sole write path for a note. Because the diff is local, the feed is just as correct on a <code>cached</code> pull as a live one. The baseline is per machine, so two people on one sheet each track their own "new".</p>
+  <div class="note sky"><b>Rendering is capped:</b> at most <strong>300</strong> cards enter the DOM after filtering, with a "showing the first 300 of N matching notes" line and the filters to narrow with. A 20,000-row tracker yields roughly 10,000 feed items, and rendering them all froze the tab. The cap is on <em>rendering only</em> — the counts, the header badge and the diff itself always run over the full set.</div>
+
+  <h2 id="security"><span class="n">07</span> Security model</h2>
+  <ul>
+    <li><strong>The key never reaches the browser.</strong> It's read server-side from disk; that's the reason the backend exists.</li>
+    <li><strong>The key is a service-account identity, not a per-sheet password.</strong> Access is granted by sharing a sheet with its <code>client_email</code>; revoke by unsharing, rotate by recreating the key.</li>
+    <li><strong>Path traversal is blocked.</strong> Project ids are validated (they become filenames); a filename always wins over an <code>id</code> field inside a file; template downloads use a closed name→file map.</li>
+    <li><strong>The server is local and unauthenticated</strong> — acceptable because it binds to your machine. The single load-bearing assumption is: don't expose it to a network.</li>
+    <li><strong>Secrets never enter git</strong> — <code>.gitignore</code> excludes keys, real project configs, and caches.</li>
+  </ul>
+
+  <h2 id="data"><span class="n">08</span> Where truth lives</h2>
+  <table>
+    <tr><th>Data</th><th>Location</th><th>Authority</th></tr>
+    <tr><td>Task data, statuses, notes, KNs</td><td class="mono">Google Sheet</td><td><b style="color:#9BB86A">Source of truth</b></td></tr>
+    <tr><td>Project registry</td><td class="mono">projects/&lt;id&gt;.json</td><td>Local config truth</td></tr>
+    <tr><td>Service-account key</td><td class="mono">~/.vpt/service_account.json</td><td>Credential (user-supplied)</td></tr>
+    <tr><td>Last-good pull</td><td class="mono">~/.vpt/vpt_cache_&lt;id&gt;.json</td><td>Disposable cache</td></tr>
+    <tr><td>Notes diff baseline</td><td class="mono">~/.vpt/vpt_notes_snapshot_&lt;id&gt;.json</td><td>Local, per machine</td></tr>
+  </table>
+  <p>The sheet is authoritative for <strong>content</strong>; local files for <strong>configuration</strong>. They own different things, so they never conflict — which is why two machines "sync" for free (they read the same sheet) and why deleting a project locally can't affect the sheet.</p>
+
+  <h2 id="failure"><span class="n">09</span> Failure model</h2>
+  <p>Every <code>/api</code> route returns <code>200</code> with a JSON envelope (<code>{ok, reason, …}</code>) — bad input, missing key, dead network, and malformed config all become described states the UI renders, never an error status. Network calls time out and fall back to cache. A React error boundary backstops render-time failures with a Reload action.</p>
+  <p>Three data states the UI distinguishes: <span class="tag" style="color:#9BB86A">● live</span> · <span class="tag" style="color:#F2683C">⚠ cached</span> (editing disabled) · <span class="tag" style="color:#C6533A">✗ no data</span> (with a hint).</p>
+  <div class="note"><b>Verified, not assumed.</b> The failure and input-handling behavior was audited by inducing real conditions — malformed configs written to disk, hostile sheet data through the real compute, abusive request bodies, corrupt keys, unwritable directories, the backend killed under a live page. Circular prerequisite chains cannot hang the compute; day-boundary math is exact across timezones and DST; atomic writes leave no partial files.</div>
+
+  <h2 id="limits"><span class="n">10</span> Known limitations</h2>
+  <ul>
+    <li><strong>Single-user by design.</strong> The security model rests on the server being local; it is not built to be exposed to a network.</li>
+    <li><strong>Not responsive below ~1100px.</strong> The layout has minimum column widths; small viewports scroll horizontally. Responsiveness is a deferred feature.</li>
+    <li><strong>Windows-first launcher.</strong> <code>npm start</code> is cross-platform; the double-click launcher and login-at-startup are Windows.</li>
+    <li><strong>No committed test suite yet.</strong> Behavior has been verified via extensive throwaway harnesses rather than tests kept in the repo; the natural first permanent tests are the pure functions in <code>brief/</code>, <code>notes/</code> and <code>config/</code>.</li>
+    <li><strong>Very large sheets slow the dashboard.</strong> Several core lists — in progress, the ready lanes, open KNs — are uncapped, so a tracker in the tens of thousands of rows renders sluggishly. Only pull-ahead, implicit blockers and the notes feed are capped today; extending the same treatment to the remaining lists is a known backlog item, not a notes-feed issue.</li>
+    <li><strong>Stale-write window</strong> as described in §06.</li>
+  </ul>
+
+  <p style="text-align:center;color:var(--text3);font-size:12px;margin-top:38px;font-family:var(--mono)">Veloci Project Tracker · local, single-user, full-stack · MIT</p>
+</div>
+</body>
+</html>

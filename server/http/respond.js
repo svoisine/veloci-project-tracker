@@ -62,3 +62,26 @@ export function emptyBrief(projectName, message, projectId = null, failureKind =
     hint: null,
   };
 }
+
+/**
+ * A complete, renderable notes feed with nothing in it. The feed panel reads
+ * `items` and `counts` unconditionally, so a route that failed before it could
+ * compute anything still has to hand back both.
+ */
+export function emptyFeed(projectId, message, failureKind = 'config', extra = {}) {
+  return {
+    ok: true,
+    project: projectId,
+    projectId,
+    source: 'none',
+    generatedAt: new Date().toISOString(),
+    items: [],
+    counts: { new: 0, changed: 0, total: 0 },
+    snapshotAt: null,
+    cachedAt: null,
+    message,
+    failureKind,
+    hint: null,
+    ...extra,
+  };
+}

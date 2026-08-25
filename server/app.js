@@ -18,6 +18,7 @@ import { serveUI } from './http/ui.js';
 import { SERVE_MODE } from './mode.js';
 import { briefRoutes } from './routes/brief.js';
 import { healthRoutes } from './routes/health.js';
+import { notesRoutes } from './routes/notes.js';
 import { projectRoutes } from './routes/projects.js';
 import { setupRoutes } from './routes/setup.js';
 import { stepRoutes } from './routes/steps.js';
@@ -30,6 +31,7 @@ export function createApp() {
 
   app.use('/api', briefRoutes);
   app.use('/api', stepRoutes);
+  app.use('/api', notesRoutes);
   app.use('/api', projectRoutes);
   app.use('/api', setupRoutes);
   app.use('/api', healthRoutes);

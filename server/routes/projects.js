@@ -127,11 +127,17 @@ projectRoutes.patch('/projects/:id', (req, res) => {
 projectRoutes.delete('/projects/:id', (req, res) => {
   try {
     const removed = deleteProject(idParam(req));
+    const alsoGone = [removed.cacheRemoved && 'cache', removed.snapshotRemoved && 'notes snapshot']
+      .filter(Boolean)
+      .join(' + ');
     console.log(
-      `[vpt] removed project "${removed.id}" (config${removed.cacheRemoved ? ' + cache' : ''} — sheet untouched)`
+      `[vpt] removed project "${removed.id}" (config${alsoGone ? ` + ${alsoGone}` : ''} — sheet untouched)`
     );
     if (removed.cacheError) {
       console.warn(`[vpt] could not remove the cache for "${removed.id}": ${removed.cacheError}`);
+    }
+    if (removed.snapshotError) {
+      console.warn(`[vpt] could not remove the notes snapshot for "${removed.id}": ${removed.snapshotError}`);
     }
     res.json({
       ok: true,
@@ -139,6 +145,8 @@ projectRoutes.delete('/projects/:id', (req, res) => {
       sheetUntouched: true,
       cacheRemoved: removed.cacheRemoved,
       cacheError: removed.cacheError,
+      snapshotRemoved: removed.snapshotRemoved,
+      snapshotError: removed.snapshotError,
     });
   } catch (err) {
     res.json(configFail(err));

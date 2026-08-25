@@ -86,6 +86,26 @@
         from { opacity: 0; transform: translateY(6px); }
         to   { opacity: 1; transform: translateY(0); }
       }
+      /* The notes feed panel and its scrim. */
+      @keyframes vptSlideIn {
+        from { transform: translateX(100%); }
+        to   { transform: translateX(0); }
+      }
+      @keyframes vptFade {
+        from { opacity: 0; }
+        to   { opacity: 1; }
+      }
+
+      /* A slide-in that animates position is exactly the kind of motion that
+         triggers vestibular discomfort. Respect the OS setting: the panel still
+         appears, it just stops travelling. */
+      @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after {
+          animation-duration: .01ms !important;
+          animation-iteration-count: 1 !important;
+          transition-duration: .01ms !important;
+        }
+      }
     </style>
   </head>
   <body>

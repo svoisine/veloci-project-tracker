@@ -17,7 +17,7 @@ import {
   normalizeSheetId,
   PLACEHOLDER_SHEET_ID,
 } from '../../shared/contract.js';
-import { cacheFile } from '../paths.js';
+import { cacheFile, notesSnapshotFile } from '../paths.js';
 import { configPath, loadProject, projectExists, writeConfigAtomic } from './store.js';
 import { assertAddressable, ConfigError, validateMilestones, validateName, validateWeekStarts } from './validate.js';
 
@@ -87,16 +87,19 @@ export function patchProject(id, input) {
 /**
  * Remove a project from VPT.
  *
- * Unlinks the two local files a project owns: its config (projects/<id>.json)
- * and its cached last-good-pull (VPT_HOME/vpt_cache_<id>.json). "Remove" should
- * mean gone from this machine — a cache left behind is invisible clutter that
- * outlives the project it belonged to.
+ * Unlinks the local files a project owns: its config (projects/<id>.json), its
+ * cached last-good-pull (VPT_HOME/vpt_cache_<id>.json) and the notes feed's
+ * snapshot (VPT_HOME/vpt_notes_snapshot_<id>.json). "Remove" should mean gone
+ * from this machine — a leftover file is invisible clutter that outlives the
+ * project it belonged to, and a stale notes snapshot is worse than clutter: a
+ * project later recreated under the same id would diff its notes against
+ * whatever the old one last saw.
  *
  * It does not, and cannot, touch the Google Sheet. The user's data stays where
  * it is.
  *
- * The config is removed FIRST. If the cache can't be deleted (locked, gone,
- * read-only), that is reported but not fatal — a stale cache is a smaller
+ * The config is removed FIRST. If a local file can't be deleted (locked, gone,
+ * read-only), that is reported but not fatal — leftover state is a smaller
  * problem than a project that refuses to be deleted.
  */
 export function deleteProject(id) {
@@ -110,17 +113,25 @@ export function deleteProject(id) {
     throw new ConfigError('delete_failed', `Could not remove projects/${id}.json: ${err.message}`);
   }
 
-  let cacheRemoved = false;
-  let cacheError = null;
-  try {
-    const cache = cacheFile(id);
-    if (fs.existsSync(cache)) {
-      fs.unlinkSync(cache);
-      cacheRemoved = true;
-    }
-  } catch (err) {
-    cacheError = err.message;
-  }
+  const cache = unlinkIfPresent(cacheFile(id));
+  const snapshot = unlinkIfPresent(notesSnapshotFile(id));
 
-  return { id, cacheRemoved, cacheError };
+  return {
+    id,
+    cacheRemoved: cache.removed,
+    cacheError: cache.error,
+    snapshotRemoved: snapshot.removed,
+    snapshotError: snapshot.error,
+  };
+}
+
+/** Best-effort unlink of one of a project's local files. Never throws. */
+function unlinkIfPresent(file) {
+  try {
+    if (!fs.existsSync(file)) return { removed: false, error: null };
+    fs.unlinkSync(file);
+    return { removed: true, error: null };
+  } catch (err) {
+    return { removed: false, error: err.message };
+  }
 }

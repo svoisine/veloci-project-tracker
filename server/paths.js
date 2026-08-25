@@ -8,6 +8,7 @@
 //   ~/.vpt/                        base dir, created on startup if missing
 //   ~/.vpt/service_account.json    the Google service-account key  (YOU supply)
 //   ~/.vpt/vpt_cache_<id>.json     last-good-pull cache, one per project
+//   ~/.vpt/vpt_notes_snapshot_<id>.json  what the notes feed last saw, per project
 //
 // Overrides:
 //   VPT_HOME=/some/dir                    move the base dir (caches follow it)
@@ -51,6 +52,16 @@ export const KEY_SOURCE = KEY_OVERRIDE ? 'env' : 'default';
 /** One cache file per project, always under VPT_HOME. */
 export function cacheFile(projectId) {
   return path.join(VPT_HOME, `vpt_cache_${projectId}.json`);
+}
+
+/**
+ * One notes snapshot per project, always under VPT_HOME — what the notes feed
+ * diffs against to work out "new since you last looked". Same shape of thing as
+ * the cache (local, disposable, per-project), so it lives beside it and is
+ * removed with it when a project is deleted.
+ */
+export function notesSnapshotFile(projectId) {
+  return path.join(VPT_HOME, `vpt_notes_snapshot_${projectId}.json`);
 }
 
 // The two ports live here so server/index.js and vite.config.js agree without

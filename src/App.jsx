@@ -6,6 +6,8 @@
 // and the conditions under which they appear at all, which is what you actually
 // come to this file to change.
 
+import { useCallback, useState } from 'react';
+
 import { useTheme } from './theme.jsx';
 import { FONT_BODY } from './tokens.js';
 import { page, shell } from './styles.js';
@@ -20,6 +22,8 @@ import BlockedList from './components/BlockedList.jsx';
 import KnList from './components/KnList.jsx';
 import ScheduleEditor from './components/ScheduleEditor.jsx';
 import KeyMissingPanel from './components/KeyMissingPanel.jsx';
+import NotesPanel from './notes/NotesPanel.jsx';
+import { useNotesFeed } from './notes/useNotesFeed.js';
 import Notice from './ui/Notice.jsx';
 import Toast from './ui/Toast.jsx';
 import { DashboardSkeleton } from './ui/Skeleton.jsx';
@@ -58,6 +62,13 @@ function noticeTitle(source, failureKind) {
 
 export default function App({ projectId, projectName, onBack }) {
   const { T } = useTheme();
+
+  // The notes feed is deliberately its own hook and its own endpoint rather
+  // than another field on the brief: it is additive and read-only, and keeping
+  // it off the dashboard's data path is what stops it regressing anything.
+  const notes = useNotesFeed(projectId);
+  const [notesOpen, setNotesOpen] = useState(false);
+
   const {
     brief,
     loading,
@@ -73,6 +84,21 @@ export default function App({ projectId, projectName, onBack }) {
     closeSchedule,
     onScheduleSaved,
   } = useBrief(projectId);
+
+  // Refreshing the dashboard refreshes the feed alongside it, and OPENING the
+  // panel reloads it too — a note edited through the per-step editor since this
+  // page loaded must never be read here in its old wording.
+  const refreshAll = useCallback(() => {
+    refresh();
+    notes.reload();
+  }, [refresh, notes.reload]);
+
+  const openNotes = useCallback(() => {
+    setNotesOpen(true);
+    notes.reload();
+  }, [notes.reload]);
+
+  const closeNotes = useCallback(() => setNotesOpen(false), []);
 
   if (loading) {
     return (
@@ -129,11 +155,15 @@ export default function App({ projectId, projectName, onBack }) {
           source={source}
           generatedAt={generatedAt}
           cachedAt={cachedAt}
-          onRefresh={refresh}
-          refreshing={refreshing}
+          onRefresh={refreshAll}
+          refreshing={refreshing || notes.refreshing}
           onBack={onBack}
           onEditSchedule={showSchedule ? closeSchedule : openSchedule}
           scheduleOpen={showSchedule}
+          onOpenNotes={openNotes}
+          notesOpen={notesOpen}
+          notesUnseen={notes.unseen}
+          notesTotal={notes.counts.total}
         />
 
         {/* A refresh that could not reach the backend at all, while we still
@@ -259,6 +289,8 @@ export default function App({ projectId, projectName, onBack }) {
           the sheet is truth · edits here are written straight back to it
         </footer>
       </div>
+
+      {notesOpen ? <NotesPanel feed={notes} onClose={closeNotes} /> : null}
 
       {toast ? <Toast toast={toast} onClose={dismissToast} /> : null}
     </div>

@@ -11,6 +11,7 @@
 //   routes/         one file per endpoint group
 //   http/           JSON envelopes, error handlers, serving the built UI
 //   brief/          the briefing computation (pure)
+//   notes/          the notes feed diff (pure) + its local snapshot file
 //   config/         projects/<id>.json — the registry
 //   sheets/         the only code that talks to Google
 //   google/         auth and failure classification

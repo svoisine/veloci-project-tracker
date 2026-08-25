@@ -27,6 +27,7 @@ for `/api/…`.
 - [Google setup](#google-setup)
 - [Sheet layout](#sheet-layout)
 - [How "ready now" is decided](#how-ready-now-is-decided)
+- [Notes activity feed](#notes-activity-feed)
 - [Running it](#running-it)
 - [Configuration](#configuration)
 - [Where VPT stores things](#where-vpt-stores-things)
@@ -37,7 +38,9 @@ for `/api/…`.
 - [Sharing and collaboration](#sharing-and-collaboration)
 - [Credential safety](#credential-safety)
 - [Design decisions and non-goals](#design-decisions-and-non-goals)
+- [Known limitations](#known-limitations)
 - [Troubleshooting](#troubleshooting)
+- [Status](#status)
 
 ---
 
@@ -47,6 +50,7 @@ for `/api/…`.
 |---|---|
 | **Dashboard** | Progress ring, next-milestone countdown, current week, in-progress list, "ready now" split by lane (deep / gap), pull-ahead, blocked, open known issues. |
 | **Editing** | Change a step's status, notes or blockers straight from the dashboard — written back to the sheet. A stale-write guard re-reads the cell first and refuses rather than clobber someone else's change. |
+| **Notes feed** | Read every note left on the tracker in one panel, grouped by the status of the step it sits on, with whatever is new or changed since you last marked them seen pulled to the top. Read-only. |
 | **Offline** | Every successful pull is cached. Lose the network and the dashboard still renders, badged `⚠ cached`, with editing disabled. |
 | **Multi-project** | A hub listing every project you've added; each project is one config file and one sheet. Add and remove projects from the UI. |
 | **Schedule editor** | Set milestones and generate a week schedule (`W0…Wn`) in a few clicks — no hand-editing JSON. |
@@ -69,28 +73,30 @@ no ORM, no database, no test runner, no bundled analytics.
 | Layer | Choice | Notes |
 |---|---|---|
 | Runtime | **Node.js 24** (ESM throughout) | `"type": "module"`; verified on Node 24 / npm 11 |
-| Backend | **Express 5** | ~13 routes, no middleware beyond `express.json` |
+| Backend | **Express 5** | ~15 routes, no middleware beyond `express.json` |
 | Google access | **googleapis** (`sheets` v4) | service-account auth, scope `spreadsheets` (read/write) |
 | Frontend | **React 19** | function components + hooks only |
 | Build / dev server | **Vite 8** with `@vitejs/plugin-react` | HMR in dev, static `dist/` in serve mode |
 | Dev orchestration | **concurrently** | runs backend + Vite together |
 | Styling | **Inline style objects + a token file** | `src/tokens.js` holds two complete themes; no CSS-in-JS library, no Tailwind |
 | Routing | **None** | two states (hub / one project) held in `useState`; a router would be dead weight |
-| Persistence | **JSON files on disk** | one config per project, one cache per project |
-| Tests | **None yet** | see [Design decisions](#design-decisions-and-non-goals) |
+| Persistence | **JSON files on disk** | one config per project; one cache and one notes snapshot per project |
+| Tests | **None committed yet** | see [Known limitations](#known-limitations) |
 
 Total runtime dependencies: **four** (`express`, `googleapis`, `react`,
 `react-dom`).
 
 **Architecture in one paragraph.** `server/paths.js` decides every filesystem
-location and both ports, once. `server/sheets.js` is the only module that talks
-to Google — it authenticates, reads both ranges in a single `batchGet`, writes
-single cells, and manages the on-disk cache. `server/brief.js` is pure: given
-raw sheet rows and a project config it computes the dashboard payload with no
-I/O. `server/config.js` is the project registry and holds no Sheets client, so
-it structurally cannot reach Google. `server/index.js` wires them into routes
-that always return `200` with a JSON envelope. The frontend renders that payload
-and posts single-cell edits back.
+location and both ports, once. `server/sheets/` and `server/google/` are the only
+modules that talk to Google — they authenticate, read both ranges in a single
+`batchGet`, write single cells, and manage the on-disk cache. `server/brief/` is
+pure: given raw sheet rows and a project config it computes the dashboard payload
+with no I/O. `server/notes/` computes the notes feed the same way and writes only
+a local snapshot file. `server/config/` is the project registry and holds no
+Sheets client, so it structurally cannot reach Google. `server/index.js` is the
+process and `server/app.js` wires `server/routes/` into a routing table whose
+every endpoint returns `200` with a JSON envelope. The frontend renders that
+payload and posts single-cell edits back.
 
 ---
 
@@ -210,7 +216,58 @@ Worth knowing, since it's the whole point of the tool:
 - **Current week** is the latest `weekStarts` entry whose date is on or before
   today.
 
-All of this is pure computation in `server/brief.js` — no I/O, no network.
+All of this is pure computation in `server/brief/` — no I/O, no network.
+
+---
+
+## Notes activity feed
+
+A note typed into the `notes` column is the one thing on a shared tracker that
+nothing surfaces later — the dashboard marks the row with a small glyph and you
+have to already know to look. The **Notes** button in the project header opens a
+slide-in panel that collects them.
+
+- **Grouped by the status of the step the note sits on** (done, in progress,
+  blocked, skipped, todo), with **New & changed** / **All notes** toggles, a
+  search box, and a per-status chip you can switch on and off.
+- **New and changed notes sort to the top**, and the header button carries a
+  badge counting them (a plain number is the total when nothing is unseen).
+- **✓ Mark all seen** acknowledges everything currently on screen. It is the
+  *only* thing that resets what counts as new.
+
+**How "new" is worked out.** The sheet exposes no change history VPT can read —
+a pull returns the current notes and nothing about when they got there. So "new"
+isn't discovered, it's *remembered*: `~/.vpt/vpt_notes_snapshot_<project>.json`
+holds two slots — `previous` (the last state you acknowledged) and `current`
+(what was last on screen) — and the feed diffs the sheet against `previous`.
+
+What that means in practice:
+
+- It is **new since this machine last marked all seen** — not since you last
+  opened the project, and not since the last restart. Closing VPT overnight
+  doesn't silently mark your unread notes as read.
+- It is **per machine**. Two people on the same sheet each keep their own
+  snapshot; marking seen on one machine doesn't affect the other.
+- There is **no authorship**. VPT has no user identity, and a local diff can't
+  tell you *who* typed a note — inventing a name would be a lie.
+- The first view has no snapshot, so everything reads as new. That's correct:
+  you haven't looked at any of it on this machine yet.
+- A note **deleted** since your last snapshot drops out of the feed rather than
+  being surfaced as a removal.
+
+**It is read-only.** Nothing in the panel writes to the sheet: `POST
+/api/notes/seen` moves the local snapshot file and holds no Sheets client. No
+column is added and no schema changes — editing a note is still the per-step
+editor's job, on the dashboard behind the panel. It also works offline: the diff
+is against a local file, so a `⚠ cached` pull still answers "what changed since
+I last looked" correctly.
+
+**At most 300 cards are rendered** after filtering. A 20,000-row tracker can
+produce 10,000 feed items, and putting them all in the DOM locked the tab up.
+When the cap bites, the panel says *"Showing the first 300 of N matching
+notes"* and you narrow with the filters or the search box. The cap is on
+**rendering only** — the counts, the header badge and the diff always run over
+the full set.
 
 ---
 
@@ -311,14 +368,17 @@ Everything outside the repo lives in one folder:
 
 ```
 ~/.vpt/
-  service_account.json        your Google key — you supply this
-  vpt_cache_<project>.json    last good pull, one per project
+  service_account.json                your Google key — you supply this
+  vpt_cache_<project>.json            last good pull, one per project
+  vpt_notes_snapshot_<project>.json   what the notes feed diffs against, one per project
 ```
 
 - Created on startup if missing (the **directory** only).
 - Caches are written on every successful live fetch and read when a fetch fails.
-- Removing a project deletes **both** its config and its cache — "remove" means
-  gone from this machine. Your Google Sheet is never touched.
+- The notes snapshot is rewritten whenever the feed loads with data; its
+  "last acknowledged" slot moves only when you press **Mark all seen**.
+- Removing a project deletes its config, its cache **and** its notes snapshot —
+  "remove" means gone from this machine. Your Google Sheet is never touched.
 - If you upgraded from an older VPT that used a different folder, startup prints
   a one-line notice telling you where the leftovers are. VPT reports them and
   never moves or deletes anything outside its own folder.
@@ -431,6 +491,8 @@ it instead of parsing message text.
 | `POST /api/setup/reveal` | Opens `~/.vpt/` in the OS file manager. Takes no parameters — the path is computed server-side |
 | `GET /api/brief?project=<id>` | The computed dashboard payload |
 | `POST /api/step` | Write one cell (`status`, `notes`, `blocked_by`) with the stale guard |
+| `GET /api/notes?project=<id>` | The notes feed: every note that exists, flagged `new` / `changed` / `unchanged` against this machine’s snapshot |
+| `POST /api/notes/seen?project=<id>` | Mark all seen — promotes the local snapshot. Local file only; cannot reach Google |
 | `GET /api/projects` | List projects (config files + cached progress; no Google calls) |
 | `POST /api/projects` | Create `projects/<id>.json` |
 | `GET /api/projects/:id` | One project's full config |
@@ -450,8 +512,11 @@ it instead of parsing message text.
 - Writes require **live** data — VPT will not locate a row from a stale cache.
 - Network calls time out at 6 s; building the Google client gets 20 s and is
   warmed at startup so the first request doesn't pay it.
-- `DELETE` and the schedule/milestone routes are **local-file only** and cannot
-  reach Google. Removing a project never touches your sheet.
+- `DELETE`, the schedule/milestone routes and `POST /api/notes/seen` are
+  **local-file only** and cannot reach Google. Removing a project never touches
+  your sheet, and marking notes seen never writes to it.
+- `GET /api/notes` reads through the same live → cache → none ladder as
+  `/api/brief`, so the feed still works offline.
 
 ---
 
@@ -464,26 +529,37 @@ VPT/
   index.html                      shell; paints the theme before first paint
   projects/<id>.json              one file per project (only the example is tracked)
   templates/                      CSVs the Add-Project screen offers for download
+  docs/system-design.html         the architecture write-up
+  shared/contract.js              validation rules both tiers import, so they can't drift
   server/
-    index.js                      Express app + all routes; --serve also serves dist/
-    paths.js                      ~/.vpt, key path, cache paths, ports — every location, once
-    sheets.js                     the only file that talks to Google (auth, read, write, cache)
-    brief.js                      the compute: progress, current week, ready/blocked/pull-ahead
-    config.js                     project registry: create / read / patch / delete config files
+    index.js                      the process: listen, survive stray errors, say what happened
+    app.js                        the routing table (/api routes → 404 + error handler → built UI)
+    paths.js                      ~/.vpt, key path, cache + snapshot paths, ports — every location, once
+    mode.js                       dev vs serve
+    routes/                       one file per endpoint group: brief, steps, notes, projects, setup, health
+    http/                         JSON envelopes, the /api 404 + error handler, serving dist/
+    sheets/                       Sheet reads/writes and the on-disk cache (a1.js does the A1-range math)
+    google/                       auth client + failure classification — the only import of googleapis
+    brief/                        the compute: progress, current week, ready/blocked/pull-ahead (pure)
+    notes/                        the notes feed diff (pure) + the local snapshot file
+    config/                       project registry: create / read / patch / delete config files
+    startup/                      the boot banner
   src/
     main.jsx, Root.jsx            entry; hub ↔ project view (no router)
-    Hub.jsx                       project list, empty state, key-missing panel
-    App.jsx                       the dashboard
+    ErrorBoundary.jsx             backstops render-time failures with a Reload action
+    Hub.jsx, hub/                 project list, empty state, hub header
+    App.jsx, dashboard/           the dashboard and its brief-loading hook
+    api.js                        every /api path and the fetch wrapper
     setup.js                      asks /api/setup where the key should go
     theme.jsx, tokens.js          warm light/dark theme, time-scheduled with manual override
-    components/
-      ProgressRing, MilestoneBar, LaneColumn, StepRow, BlockedList, KnList,
-      ProjectCard, ScheduleEditor, StatusChip, Header,
-      NewProjectForm             the Add-Project panel
-      SetupGuide                 the collapsible Google-access walkthrough
-      KeyMissingPanel            friendly "you need a key" help (not an auth gate)
-      TemplateDownloads          CSV template downloads
-      FolderPath                 a path with Open-folder / Copy-path actions
+    styles.js                     shared inline-style helpers
+    notes/                        the slide-in notes panel, its grouping and its feed hook
+    components/                   dashboard pieces: ProgressRing, MilestoneBar, LaneColumn, StepRow,
+                                  BlockedList, KnList, ProjectCard, StatusChip, Header,
+                                  NewProjectForm, SetupGuide, KeyMissingPanel, TemplateDownloads,
+                                  FolderPath, ScheduleEditor (+ schedule/, setup/, stepRow/)
+    ui/                           shared primitives: Field, Notice, SaveCancel, SectionCard,
+                                  Skeleton, Toast
 ```
 
 ---
@@ -521,6 +597,11 @@ For notes specifically, a rejected save keeps your typed text so you can review
 the other version and hit save again to deliberately overwrite. Nothing you typed
 is lost.
 
+**The notes feed is per machine, and anonymous.** Each person's "new since you
+last looked" comes from their own local snapshot, so marking notes seen on one
+machine has no effect on anyone else's. VPT has no user identity, so the feed
+tells you a note is new — never who wrote it.
+
 ---
 
 ## Credential safety
@@ -551,19 +632,44 @@ Things that look like omissions but are choices:
 
 - **No auth, no accounts, no login.** VPT is a single-user local tool. The
   service-account key is not a user credential — it's a file you supply once.
-- **No database.** One JSON file per project, one cache file per project. A
-  restart is the only cache-invalidation protocol needed.
+- **No database.** One JSON file per project, plus a disposable cache and notes
+  snapshot per project. A restart is the only cache-invalidation protocol needed.
 - **No router.** The app has exactly two states. `useState` covers it.
 - **No CSS framework.** Two token sets in `src/tokens.js` and inline style
   objects. The theme is warm in both modes — no pure black or white anywhere —
   and switches on a schedule with a manual override.
 - **Never 500.** Every route returns a JSON envelope so the UI always has
   something to render and something to say.
-- **Google is reachable from exactly one module.** `sheets.js`. Everything else
-  is structurally incapable of touching your data.
-- **No tests yet.** Verified by hand so far. The natural first targets are the
-  pure functions: `brief.js` (ready/blocked/pull-ahead), `config.js` validation,
-  and `parseRange`/`resolveCell` in `sheets.js`.
+- **Google is reachable from exactly two modules.** `sheets/` and `google/` —
+  everything else, `config/` and `notes/` included, holds no Sheets client and is
+  structurally incapable of touching your data.
+- **No committed tests yet.** Behaviour has been verified by hand and with
+  throwaway harnesses that were not kept. The natural first permanent targets are
+  the pure functions: `brief/` (ready/blocked/pull-ahead), `notes/feed.js` (the
+  diff), `config/validate.js`, and `parseRange`/`resolveCell` in `sheets/a1.js`.
+
+---
+
+## Known limitations
+
+Honest about what it isn't:
+
+- **Single-user by design.** The security model rests on the server being local
+  and unauthenticated. It is not built to be exposed to a network.
+- **Not responsive below ~1100px.** The layout has minimum column widths and no
+  media queries; narrow viewports scroll horizontally. Responsiveness is
+  deferred, not done.
+- **Windows-first launcher.** `npm start` is cross-platform; the double-click
+  launcher and start-at-login are Windows only.
+- **No committed automated test suite yet.** Hardening was done with throwaway
+  harnesses rather than tests kept in the repo.
+- **A very large sheet slows the dashboard.** Some core lists — in progress, the
+  ready lanes, open KNs — are uncapped, so a tracker in the tens of thousands of
+  rows (20k, say) renders sluggishly. Only pull-ahead, implicit blockers and the
+  notes feed are capped today. Extending the same treatment to the remaining
+  lists is a known backlog item; it is not a notes-feed problem.
+- **The stale-write window** described under
+  [Sharing and collaboration](#sharing-and-collaboration) is narrow but not zero.
 
 ---
 
@@ -593,4 +699,7 @@ Feature-complete through Milestone 4: read-only dashboard (M1), editing with the
 stale-write guard (M2), warm theme plus the multi-project hub (M3), and
 serve mode, the launcher and the schedule editor (M4). A subsequent pass moved
 storage to `~/.vpt/`, made the frontend port-independent, and added the in-app
-setup guide, sheet templates, and per-project key support.
+setup guide, sheet templates, and per-project key support. Since then the server
+and frontend were split into the per-concern modules shown in
+[Repo layout](#repo-layout), and the read-only
+[notes activity feed](#notes-activity-feed) was added and hardened.

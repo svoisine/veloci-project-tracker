@@ -35,6 +35,10 @@ export default function Header({
   onBack,
   onEditSchedule,
   scheduleOpen,
+  onOpenNotes,
+  notesOpen,
+  notesUnseen = 0,
+  notesTotal = 0,
 }) {
   const { T, theme, toggle, overridden, until } = useTheme();
   const [hover, setHover] = useState(null);
@@ -175,6 +179,53 @@ export default function Header({
           {theme === 'dark' ? '☾ Dark' : '☀ Light'}
           {overridden ? <span style={{ color: T.text3 }}> · manual</span> : null}
         </button>
+
+        {onOpenNotes ? (
+          <button
+            type="button"
+            onClick={onOpenNotes}
+            onMouseEnter={() => setHover('notes')}
+            onMouseLeave={() => setHover(null)}
+            title={
+              notesUnseen > 0
+                ? `${notesUnseen} note${notesUnseen === 1 ? '' : 's'} new or changed since you last looked`
+                : 'Read the notes left on this project’s steps'
+            }
+            style={{
+              ...ghost('notes'),
+              color: notesOpen || hover === 'notes' ? T.text : T.text2,
+              background: notesOpen || hover === 'notes' ? T.bg3 : T.bg2,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 7,
+            }}
+          >
+            Notes
+            {/* The badge counts what is NEW or CHANGED since the last "mark all
+                seen" — not how many notes exist. A badge showing the total
+                would never go down, so it would never mean anything. */}
+            {notesUnseen > 0 ? (
+              <span
+                style={{
+                  fontFamily: FONT_BODY,
+                  fontSize: 10.5,
+                  fontWeight: 700,
+                  lineHeight: 1,
+                  color: T.bg,
+                  background: T.deep,
+                  borderRadius: 999,
+                  padding: '3px 6px',
+                  minWidth: 17,
+                  textAlign: 'center',
+                }}
+              >
+                {notesUnseen > 99 ? '99+' : notesUnseen}
+              </span>
+            ) : notesTotal > 0 ? (
+              <span style={{ fontSize: 11, color: T.text3, lineHeight: 1 }}>{notesTotal}</span>
+            ) : null}
+          </button>
+        ) : null}
 
         {onEditSchedule ? (
           <button

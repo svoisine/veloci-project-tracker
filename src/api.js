@@ -66,3 +66,5 @@ export const del = (path) => request(path, { method: 'DELETE' });
 /** Project ids go into the path, so they are always encoded. */
 export const projectPath = (id, suffix = '') => `/api/projects/${encodeURIComponent(id)}${suffix}`;
 export const briefPath = (id) => `/api/brief?project=${encodeURIComponent(id)}`;
+export const notesPath = (id) => `/api/notes?project=${encodeURIComponent(id)}`;
+export const notesSeenPath = (id) => `/api/notes/seen?project=${encodeURIComponent(id)}`;
